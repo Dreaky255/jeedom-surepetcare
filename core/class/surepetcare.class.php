@@ -45,21 +45,34 @@ class surepetcare extends eqLogic {
                             }
                             $token = cache::byKey('surepetcare::token')->getValue();
                         }
-                        $url = 'https://app.api.surehub.io/api/pet?with[]=status&with[]=position&with[]=tag';
-                        $result = surepetcare::request($url, null, 'GET', array('Authorization: Bearer ' . $token));
-                        log::add('surepetcare','debug', "Pets Data : ". print_r($result, true));
-                        if (isset($result['data'])) {
-                            surepetcare::updatePetsStatus($result['data']);
-                        } else {
-                            log::add('surepetcare','debug', 'Aucune donnée pour les animaux lors de la mise à jour');
-                        }
-                        $url = 'https://app.api.surehub.io/api/device?with[]=children&with[]=status&with[]=curfew&with[]=control';
+                        
+                        $url = 'https://app.api.surehub.io/api/device?with[]=children&with[]=status&with[]=curfew&with[]=control&with[]=tags';
                         $result = surepetcare::request($url, null, 'GET', array('Authorization: Bearer ' . $token));
                         log::add('surepetcare','debug', "Devices Data : ". print_r($result, true));
                         if (isset($result['data'])) {
-                            surepetCare::updateDevicesStatus($result['data']);
+			   //building array with 'unauthorized' pets profile
+			   $tagIdsWithProfile3 = [];
+			   foreach ($data['data'] as $item) {
+			      foreach ($item['tags'] as $tag) {
+			         if ($tag['profile'] === 3) {
+			            $tagIdsWithProfile3[] = $tag['id'];
+			         }
+			      }
+			   }
+                           surepetCare::updateDevicesStatus($result['data']);
                         } else {
                             log::add('surepetcare','debug', 'Aucune donnée pour les équipements lors de la mise à jour');
+                        }
+			$url = 'https://app.api.surehub.io/api/pet?with[]=status&with[]=position&with[]=tag';
+                        $result = surepetcare::request($url, null, 'GET', array('Authorization: Bearer ' . $token));
+                        log::add('surepetcare','debug', "Pets Data : ". print_r($result, true));
+                        if (isset($result['data'])) {
+			   foreach ($data['data'] as &$item) {
+			      $item['unauthorized'] = in_array($item['tag']['id'], $tagIdsWithProfile3);
+			   }
+                            surepetcare::updatePetsStatus($result['data']);
+                        } else {
+                            log::add('surepetcare','debug', 'Aucune donnée pour les animaux lors de la mise à jour');
                         }
                     } catch (Exception $exc) {
                         log::add('surepetcare', 'debug', "Erreur lors de l'exécution du cron " . $exc->getMessage());
@@ -577,6 +590,13 @@ class surepetcare extends eqLogic {
                     $eqLogic->checkAndUpdateCmd('pet.drinkingtime', $date->format('Y-m-d H:i:s'));
                 } else {
                     log::add('surepetcare','debug', 'Pas d\'info dernière boisson');
+                }
+		if (isset($pet['unauthorized'])) {
+		   $unauthorized = $pet['unauthorized'];
+		   log::add('surepetcare','debug', 'Mise à jour autorisation sortie ' . $unauthorized);
+                   $eqLogic->checkAndUpdateCmd('pet.unauthorized', $unauthorized);
+		} else {
+                    log::add('surepetcare','debug', 'Pas d\'info d\'autorisation de sortie');
                 }
             }
         }
